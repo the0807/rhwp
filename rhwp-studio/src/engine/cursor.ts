@@ -499,19 +499,89 @@ export class CursorState {
     this.preferredX = null;
     this.atLineEnd = false;
     try {
-      // 마지막 구역의 마지막 문단 끝
-      const sec = 0; // 현재 단일 구역 가정
-      const paraCount = this.wasm.getParagraphCount(sec);
+      const secCount = this.wasm.getSectionCount();
+      const lastSec = secCount > 0 ? secCount - 1 : 0;
+      const paraCount = this.wasm.getParagraphCount(lastSec);
       if (paraCount > 0) {
         const lastPara = paraCount - 1;
-        const paraLen = this.wasm.getParagraphLength(sec, lastPara);
-        this.position = { sectionIndex: sec, paragraphIndex: lastPara, charOffset: paraLen };
+        const paraLen = this.wasm.getParagraphLength(lastSec, lastPara);
+        this.position = { sectionIndex: lastSec, paragraphIndex: lastPara, charOffset: paraLen };
       } else {
-        this.position = { sectionIndex: 0, paragraphIndex: 0, charOffset: 0 };
+        this.position = { sectionIndex: lastSec, paragraphIndex: 0, charOffset: 0 };
       }
       this.updateRect();
     } catch (e) {
       console.warn('[CursorState] moveToDocumentEnd 실패:', e);
+    }
+  }
+
+  // ─── 문단 단위 이동 (Ctrl+↑/↓) ────────────────────────
+
+  /** 이전/다음 문단 시작으로 이동 (direction: -1=이전, +1=다음).
+   *  한컴 표준 정합 — 본문은 현재 구역 내 문단 이동 (구역 경계 영역 영역 인접 구역 이동).
+   *  표 셀 내부는 cellParaIndex 이동 (셀 내부 문단 경계). */
+  moveToParagraphBoundary(direction: -1 | 1): void {
+    this.preferredX = null;
+    this.atLineEnd = false;
+    const pos = this.position;
+
+    if (this.isInCell() && !this.isInTextBox()) {
+      try {
+        const sec = pos.sectionIndex;
+        const ppi = pos.parentParaIndex!;
+        const ci = pos.controlIndex!;
+        const cei = pos.cellIndex!;
+        const cpi = pos.cellParaIndex!;
+        const cellParaCount = this.wasm.getCellParagraphCount(sec, ppi, ci, cei);
+        const target = cpi + direction;
+        if (target >= 0 && target < cellParaCount) {
+          this.position = { ...pos, cellParaIndex: target, charOffset: 0 };
+          this.updateRect();
+        }
+      } catch (e) {
+        console.warn('[CursorState] moveToParagraphBoundary (cell) 실패:', e);
+      }
+      return;
+    }
+
+    try {
+      const sec = pos.sectionIndex;
+      const paraCount = this.wasm.getParagraphCount(sec);
+      if (direction === 1) {
+        const target = pos.paragraphIndex + 1;
+        if (target < paraCount) {
+          this.position = { ...pos, paragraphIndex: target, charOffset: 0 };
+        } else {
+          // 구역 경계 — 다음 구역 첫 문단으로
+          const secCount = this.wasm.getSectionCount();
+          if (sec + 1 < secCount) {
+            this.position = { sectionIndex: sec + 1, paragraphIndex: 0, charOffset: 0 };
+          } else {
+            // 문서 마지막 문단 끝
+            const lastPara = paraCount - 1;
+            const paraLen = this.wasm.getParagraphLength(sec, lastPara);
+            this.position = { ...pos, paragraphIndex: lastPara, charOffset: paraLen };
+          }
+        }
+      } else {
+        if (pos.charOffset > 0) {
+          // 현재 문단 시작으로 (한컴 표준)
+          this.position = { ...pos, charOffset: 0 };
+        } else if (pos.paragraphIndex > 0) {
+          this.position = { ...pos, paragraphIndex: pos.paragraphIndex - 1, charOffset: 0 };
+        } else if (sec > 0) {
+          // 구역 경계 — 이전 구역 마지막 문단 시작으로
+          const prevParaCount = this.wasm.getParagraphCount(sec - 1);
+          this.position = {
+            sectionIndex: sec - 1,
+            paragraphIndex: prevParaCount > 0 ? prevParaCount - 1 : 0,
+            charOffset: 0,
+          };
+        }
+      }
+      this.updateRect();
+    } catch (e) {
+      console.warn('[CursorState] moveToParagraphBoundary 실패:', e);
     }
   }
 
