@@ -998,6 +998,19 @@ export function handleCtrlKey(this: any, e: KeyboardEvent): void {
       }
       break;
     }
+    case 'delete': {
+      if (!e.ctrlKey) break;
+      e.preventDefault();
+      if (this.cursor.hasSelection()) {
+        this.deleteSelection();
+      } else {
+        // Ctrl+Delete (Win/Linux): 다음 단어 경계까지 삭제
+        this.cursor.setAnchor();
+        this.cursor.moveToWordBoundary(1);
+        if (this.cursor.hasSelection()) this.deleteSelection();
+      }
+      break;
+    }
     case 'home': {
       e.preventDefault();
       if (e.shiftKey) {
