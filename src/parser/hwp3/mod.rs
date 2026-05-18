@@ -2792,11 +2792,17 @@ pub fn parse_hwp3(data: &[u8]) -> Result<Document, Hwp3Error> {
     if doc_info.border_type > 0 {
         use crate::model::style::{BorderFill, BorderLine, BorderLineType};
         let mut page_border = BorderFill::default();
+        // HWP3 spec (한글문서파일구조3.0.md:850) 선 종류 체계:
+        //   0=없음, 1=실선, 2=굵은 실선, 3=점선, 4=2중 실선
+        // sample16 border_type=4 → 한컴 정답지 이중 실선 (Task #987).
+        // 주의: 2=굵은 실선이 스펙이나 현재 Dash 매핑 — 범위 외라 본 타스크에서 미수정,
+        //       보고서에 후속 과제로 기록.
         let line_type = match doc_info.border_type {
             1 => BorderLineType::Solid,
             2 => BorderLineType::Dash,
             3 => BorderLineType::Dot,
-            _ => BorderLineType::Solid, // 4 이상: 한컴 사적 type, 일단 Solid 로 fallback
+            4 => BorderLineType::Double,
+            _ => BorderLineType::Solid, // 5 이상: 미정의 → Solid fallback
         };
         // width: HWP5 BorderLine.width 는 인덱스 (0=0.1mm, 1=0.12mm, ..., 6=0.5mm).
         // HWP3 raw 의 border 두께 별도 정보 없음 → 기본 1 (얇은 실선) 적용.
@@ -2807,12 +2813,17 @@ pub fn parse_hwp3(data: &[u8]) -> Result<Document, Hwp3Error> {
         };
         page_border.borders = [bl, bl, bl, bl];
         doc_border_fills.push(page_border);
-        let bfid = (doc_border_fills.len() - 1) as u16; // 0-based ID
-                                                        // attr bit 0 = paper_based (1) vs body_based (0).
-                                                        // HWP3 spec 명시 없으나 한컴 viewer 의 PDF 출력 정합 비교 결과 paper_based 가 정답
-                                                        // (sample16 페이지 2 목차 우측 페이지 번호가 body_based 박스 밖, paper_based 박스 안).
+        // 1-based ID (렌더러 규칙). 렌더러 layout.rs 는 border_fill_id - 1 로 인덱싱하므로
+        // push 직후 len() 이 방금 넣은 항목의 1-based ID. mod.rs:310/1043 과 동일 규칙.
+        // (Task #987) 기존 (len-1) 0-based 는 off-by-one — Double 대신 인접 빈 border 가
+        // 렌더되어 이중선이 화면에 나타나지 않던 원인.
+        let bfid = doc_border_fills.len() as u16;
+        // attr bit 0 = paper_based(1) vs body_based(0). 렌더러 layout.rs 가 이 비트를 존중.
+        // [Task #987] sample16 한컴 정답지 = body 기준 (작업지시자 시각 판정).
+        // 기존 attr=1(paper) 은 bfid off-by-one 으로 잘못된 border_fill 을 읽던
+        // 상태의 착시 정합이었음. off-by-one 수정 후 body 기준이 정답.
         section_def.page_border_fill = crate::model::page::PageBorderFill {
-            attr: 1,
+            attr: 0,
             spacing_left: (doc_info.border_margin_left as i16) * 4,
             spacing_right: (doc_info.border_margin_right as i16) * 4,
             spacing_top: (doc_info.border_margin_top as i16) * 4,
