@@ -13,10 +13,29 @@
 //! 없으면 (HwpSummary, DocOptions/_LinkDoc, Scripts/JScriptVersion) 정적
 //! fallback (`saved/blank2010.hwp` 추출) 사용.
 //!
-//! Stage 2.1 (본 모듈) = HWPX 컨테이너 → extra_streams (정공법).
-//! Stage 2.2 (별도) = blank2010.hwp fallback.
+//! Stage 2.1 = HWPX 컨테이너 → extra_streams (정공법, Preview/Scripts).
+//! Stage 2.2 (본 모듈) = 정적 fallback (HwpSummary/DocOptions/JScriptVersion).
 
 use super::reader::HwpxReader;
+
+// [Task #852 Stage 2.2] 정적 fallback 자산.
+//
+// HWPX 컨테이너에 동등 데이터가 없는 contract 스트림 3 개를 `samples/form-01.hwp`
+// (한컴 정답지) 및 `saved/blank2010.hwp` 에서 사전 추출. 변환 결과가 한컴
+// 호환을 보장하기 위한 최소 contract.
+//
+// - hwp_summary_information.bin (461 B) — `samples/form-01.hwp` 추출.
+//   title/creator/subject 등 OLE Property Set. HWPX content.hpf opf:metadata
+//   기반 패치는 후속 task.
+// - doc_options_link_doc.bin (524 B) — `saved/blank2010.hwp` 추출. UTF-16 LE
+//   임시 파일 경로 메타.
+// - scripts_jscript_version.bin (13 B) — `saved/blank2010.hwp` 추출.
+//   `cd 64 80 00 ...` 13 바이트 헤더.
+const FALLBACK_HWP_SUMMARY: &[u8] = include_bytes!("blank2010_assets/hwp_summary_information.bin");
+const FALLBACK_DOC_OPTIONS_LINK_DOC: &[u8] =
+    include_bytes!("blank2010_assets/doc_options_link_doc.bin");
+const FALLBACK_SCRIPTS_JSCRIPT_VERSION: &[u8] =
+    include_bytes!("blank2010_assets/scripts_jscript_version.bin");
 
 /// HWPX 컨테이너 → HWP OLE 스트림 매핑 결과
 pub(super) struct ContractStreams {
@@ -56,6 +75,26 @@ pub(super) fn extract_contract_streams(reader: &mut HwpxReader) -> ContractStrea
             streams.push(("/Scripts/DefaultJScript".to_string(), compressed));
         }
     }
+
+    // [Stage 2.2] HWPX 컨테이너에 동등 데이터가 없는 contract 3 스트림 fallback.
+    // 한컴 정답지가 모든 HWP 파일에 요구하는 최소 OLE Property Set / 메타.
+    //
+    // 주의: 스트림 경로는 OLE 표준의 `\x05` 선두 prefix (Property Set 표시) 가
+    // 정답지의 실제 이름이나, mini_cfb 가 path 형식으로 처리하므로 일반
+    // ASCII path 로 작성 후 한컴이 정상 인식. form-01 정답지의 실제 경로
+    // `\x05HwpSummaryInformation` 와 byte-level 차이는 Stage 2.3 검증.
+    streams.push((
+        "/HwpSummaryInformation".to_string(),
+        FALLBACK_HWP_SUMMARY.to_vec(),
+    ));
+    streams.push((
+        "/DocOptions/_LinkDoc".to_string(),
+        FALLBACK_DOC_OPTIONS_LINK_DOC.to_vec(),
+    ));
+    streams.push((
+        "/Scripts/JScriptVersion".to_string(),
+        FALLBACK_SCRIPTS_JSCRIPT_VERSION.to_vec(),
+    ));
 
     ContractStreams { streams }
 }
