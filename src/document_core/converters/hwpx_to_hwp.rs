@@ -71,6 +71,10 @@ pub struct AdapterReport {
     pub text_box_list_header_tail_materialized: u32,
     /// HWPX drawText 내부 paragraph PARA_HEADER tail materialize 횟수
     pub text_box_para_header_tail_materialized: u32,
+    /// HWPX 수식(Equation) CTRL_HEADER attr 중 한컴 저장 관례 비트 보강 횟수 (Task #1061)
+    pub equation_ctrl_header_attr_materialized: u32,
+    /// HWPX 수식(Equation) EQEDIT 의 font_name/version_info 정답지 정합 정정 횟수 (Task #1061 Stage 2)
+    pub equation_font_version_normalized: u32,
 }
 
 impl AdapterReport {
@@ -103,7 +107,9 @@ impl AdapterReport {
                 + self.section_def_controls_inserted
                 + self.picture_href_ctrl_data_materialized
                 + self.text_box_list_header_tail_materialized
-                + self.text_box_para_header_tail_materialized)
+                + self.text_box_para_header_tail_materialized
+                + self.equation_ctrl_header_attr_materialized
+                + self.equation_font_version_normalized)
                 > 0
     }
 }
@@ -429,8 +435,36 @@ fn adapt_paragraph(para: &mut Paragraph, report: &mut AdapterReport) {
                 adapt_picture_href_ctrl_data(pic, &mut ctrl_data_records[idx], report)
             }
             Control::Shape(shape) => adapt_shape(shape, report),
+            Control::Equation(eq) => adapt_equation(eq, report),
             _ => {}
         }
+    }
+}
+
+/// [Task #1061] HWPX 수식 control 의 한컴 호환 contract 정정.
+///
+/// 정답지 (samples/math-001.hwp) vs 저장본 (saved/111math-001.hwp) record-level diff:
+/// - common.attr 의 bit 27 (0x08000000) 누락 — 정답지 0x0C2A2211 vs 저장본 0x042A2211
+/// - HWPX 의 `font` 속성을 HWP5 EQEDIT 의 font_name 자리에 매핑한 결과 정답지와 자리값 swap
+///   → Stage 2 에서 parser 직접 정정 (정답지: version_info="Equation Version 60", font_name="")
+///
+/// 본 함수는 Stage 1 의 attr 재구성 (enum 필드 → bit 합성 + bit 27 보강) + raw_ctrl_data clear
+/// (직렬화기가 common 으로 재합성).
+fn adapt_equation(eq: &mut crate::model::control::Equation, report: &mut AdapterReport) {
+    const HWPX_EQUATION_NUMBERING_BIT: u32 = 0x0800_0000;
+
+    let before = eq.common.attr;
+    // HWPX 출처는 attr=0 으로 IR 생성 → pack_common_attr_bits 로 enum 필드들에서 재합성 후
+    // bit 27 보강. 표 어댑터 (materialize_table_ctrl_header_attr) 와 동일 패턴.
+    eq.common.attr = pack_common_attr_bits(&eq.common) | HWPX_EQUATION_NUMBERING_BIT;
+
+    // raw_ctrl_data 가 보존되어 있으면 직렬화기가 raw 우선 사용 → attr 갱신 무효화.
+    // clear 하여 직렬화기가 common 으로 재합성하도록 함.
+    let raw_was_present = !eq.raw_ctrl_data.is_empty();
+    eq.raw_ctrl_data.clear();
+
+    if eq.common.attr != before || raw_was_present {
+        report.equation_ctrl_header_attr_materialized += 1;
     }
 }
 
