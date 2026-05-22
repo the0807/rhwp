@@ -248,8 +248,10 @@ fn normalize_doc_properties_for_hwp(doc: &mut Document, report: &mut AdapterRepo
 ///
 /// ## 배경
 ///
-/// HWPX 파서는 `<hp:secPr>` 정보를 `Section.section_def` 필드로 채우지만,
-/// `Control::SectionDef` 컨트롤을 첫 문단의 `controls` 에 삽입하지는 않는다.
+/// HWPX 파서는 `<hp:secPr>` 정보를 `Section.section_def` 필드와
+/// `Control::SectionDef` 컨트롤에 함께 반영한다. 단, 예전 파서 산출물이나 외부 생성 IR처럼
+/// `section_def` 필드만 있고 문단 control stream 에 `Control::SectionDef` 가 빠진 문서를
+/// HWP로 저장할 수 있으므로, 어댑터는 fallback 으로 이 컨트롤을 보강한다.
 /// HWP 직렬화기 (`serializer/control.rs:40 + 171-241`) 는 `paragraph.controls` 를
 /// 순회하면서 `Control::SectionDef` 를 만나야 PAGE_DEF / FOOTNOTE_SHAPE / PAGE_BORDER_FILL
 /// 레코드를 출력한다. 이 컨트롤이 없으면 직렬화 결과의 PAGE_DEF 가 누락되어 재로드 시

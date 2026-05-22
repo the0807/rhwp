@@ -235,11 +235,12 @@ fn parse_paragraph(
                         let mut sd = SectionDef::default();
                         parse_section_def_start(ce, &mut sd);
                         let col_def_opt = parse_sec_pr_children(reader, &mut sd)?;
-                        sec_def = Some(sd);
+                        sec_def = Some(sd.clone());
                         // [Task #901] SectionDef 도 HWP 바이너리에서 8 utf16 inline marker —
                         // line_seg.text_start (file 값) 가 HWP 인코딩 가정. HWPX parser
                         // 가 utf16_pos 동기화하지 않으면 paragraph 0 의 compose_lines 가
                         // 모든 chars 를 line 0 에 packing. \u{0002} 추가로 8 utf16 정합.
+                        para.controls.push(Control::SectionDef(Box::new(sd)));
                         text_parts.push("\u{0002}".to_string());
                         // colPr이 있으면 ColumnDef 컨트롤 추가 (초기 단 정의) + 8 utf16.
                         if let Some(cd) = col_def_opt {

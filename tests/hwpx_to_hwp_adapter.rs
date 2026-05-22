@@ -1,7 +1,7 @@
 //! HWPX → HWP IR 어댑터 통합 테스트 (#178)
 //!
-//! Stage 1: 베이스라인 측정 (페이지 폭주 + 영역별 차이 인벤토리).
-//!         아직 어댑터 본체가 동작하지 않으므로 회복 검증 없음 — 측정만.
+//! Stage 1: 베이스라인 측정 (페이지 수 + 영역별 차이 인벤토리).
+//!         일부 샘플은 HWPX 제어 스트림 보존이 누적되며 어댑터 전에도 페이지 수가 안정화된다.
 
 use rhwp::document_core::converters::diagnostics::diff_hwpx_vs_serializer_assumptions;
 use rhwp::document_core::converters::hwpx_to_hwp::{
@@ -45,33 +45,29 @@ fn page_count_after_hwp_export(hwpx_bytes: &[u8]) -> (u32, u32) {
     (original_pages, reloaded_pages)
 }
 
-/// 베이스라인 측정: 현 단계는 페이지 폭주 (reloaded > orig) 가 발생하는 것이 "정상".
-/// 어댑터 영역별 매핑이 누적되면서 폭주 비율이 줄고, Stage 5 완료 시점에는
-/// reloaded == orig 가 되도록 게이트가 강화된다.
-fn assert_explosion_baseline(name: &str, bytes: &[u8]) {
+/// 베이스라인 측정: HWPX 파서/IR 보존이 누적된 샘플은 어댑터 전에도 페이지 수가 안정적이다.
+fn assert_stable_baseline(name: &str, bytes: &[u8]) {
     let (orig, reloaded) = page_count_after_hwp_export(bytes);
     eprintln!(
         "[#178 baseline] {}: orig={}, reloaded={}",
         name, orig, reloaded
     );
     assert!(orig >= 1, "{}: 원본 페이지 수 측정 실패", name);
-    assert!(
-        reloaded > orig,
-        "{}: 현 단계는 폭주가 발생해야 정상 (어댑터 미적용). orig={}, reloaded={}",
-        name,
-        orig,
-        reloaded
+    assert_eq!(
+        reloaded, orig,
+        "{}: baseline export/reload 페이지 수 불안정",
+        name
     );
 }
 
 #[test]
-fn baseline_page_count_explosion_hwpx_h_01() {
-    assert_explosion_baseline("hwpx-h-01", &load_sample("hwpx-h-01.hwpx"));
+fn baseline_page_count_stable_hwpx_h_01() {
+    assert_stable_baseline("hwpx-h-01", &load_sample("hwpx-h-01.hwpx"));
 }
 
 #[test]
-fn baseline_page_count_explosion_hwpx_h_02() {
-    assert_explosion_baseline("hwpx-h-02", &load_sample("hwpx-h-02.hwpx"));
+fn baseline_page_count_stable_hwpx_h_02() {
+    assert_stable_baseline("hwpx-h-02", &load_sample("hwpx-h-02.hwpx"));
 }
 
 #[test]
@@ -513,21 +509,29 @@ fn stage4_section_def_control_inserted() {
     let bytes = load_sample("hwpx-h-01.hwpx");
     let core = DocumentCore::from_bytes(&bytes).expect("HWPX 로드 실패");
 
-    // 어댑터 적용 전: 첫 문단에 SectionDef 컨트롤이 없어야 함 (HWPX 출처 특성)
+    // 현재 HWPX 파서는 secPr 를 Section.section_def 와 control stream 에 함께 실체화한다.
     let first_para_orig = &core.document().sections[0].paragraphs[0];
     assert!(
-        !first_para_orig
+        first_para_orig
             .controls
             .iter()
             .any(|c| matches!(c, Control::SectionDef(_))),
-        "HWPX 출처 첫 문단에 SectionDef 가 이미 있다면 가정 위반"
+        "HWPX secPr 는 첫 문단 SectionDef 컨트롤로 materialize 되어야 함"
     );
 
+    // 옛 파서 산출물/외부 IR 호환 fallback 검증을 위해 SectionDef 컨트롤을 제거한다.
     let mut doc = core.document().clone();
+    for section in &mut doc.sections {
+        if let Some(first_para) = section.paragraphs.first_mut() {
+            first_para
+                .controls
+                .retain(|c| !matches!(c, Control::SectionDef(_)));
+        }
+    }
     let report = convert_hwpx_to_hwp_ir(&mut doc);
     assert!(
         report.section_def_controls_inserted > 0,
-        "SectionDef 삽입이 발생해야 함"
+        "SectionDef fallback 삽입이 발생해야 함"
     );
 
     // 어댑터 적용 후: 모든 섹션의 첫 문단에 SectionDef 가 있어야 함
@@ -549,6 +553,13 @@ fn stage4_section_def_idempotent() {
     let bytes = load_sample("hwpx-h-01.hwpx");
     let core = DocumentCore::from_bytes(&bytes).expect("HWPX 로드 실패");
     let mut doc = core.document().clone();
+    for section in &mut doc.sections {
+        if let Some(first_para) = section.paragraphs.first_mut() {
+            first_para
+                .controls
+                .retain(|c| !matches!(c, Control::SectionDef(_)));
+        }
+    }
 
     let r1 = convert_hwpx_to_hwp_ir(&mut doc);
     let r2 = convert_hwpx_to_hwp_ir(&mut doc);

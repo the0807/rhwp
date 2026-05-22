@@ -1873,7 +1873,7 @@ impl LayoutEngine {
             let shape_markers: Vec<(usize, String)> = if show_ctrl {
                 if let Some(ref pa) = para {
                     let ctrl_positions =
-                        crate::document_core::helpers::find_control_text_positions(pa);
+                        crate::document_core::helpers::find_logical_control_positions(pa);
                     pa.controls
                         .iter()
                         .enumerate()
@@ -3498,7 +3498,7 @@ impl LayoutEngine {
                 // 책갈피 조판부호 마커
                 if ctrl_codes {
                     let ctrl_positions =
-                        crate::document_core::helpers::find_control_text_positions(p);
+                        crate::document_core::helpers::find_logical_control_positions(p);
                     for (ci, ctrl) in p.controls.iter().enumerate() {
                         if let Control::Bookmark(_bm) = ctrl {
                             let char_pos = ctrl_positions.get(ci).copied().unwrap_or(0);

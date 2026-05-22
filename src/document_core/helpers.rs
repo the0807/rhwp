@@ -8,39 +8,24 @@ use crate::model::paragraph::Paragraph;
 use crate::model::path::PathSegment;
 use crate::model::style::BorderLineType;
 
+fn is_logical_inline_control(ctrl: &Control) -> bool {
+    matches!(
+        ctrl,
+        Control::Shape(_)
+            | Control::Table(_)
+            | Control::Picture(_)
+            | Control::Equation(_)
+            | Control::Footnote(_)
+            | Control::Endnote(_)
+    )
+}
+
 /// 문단의 탐색 가능한 텍스트 길이를 반환한다.
 ///
 /// CharOverlap(TCPS)은 inline 컨트롤이라 para.text에 포함되지 않지만,
 /// 레이아웃에서 각 overlap이 char_offset 1개를 차지하므로 보정한다.
 pub(crate) fn navigable_text_len(para: &Paragraph) -> usize {
-    let text_len = para.text.chars().count();
-    let char_overlap_count = para
-        .controls
-        .iter()
-        .filter(|c| matches!(c, Control::CharOverlap(_)))
-        .count();
-    // 인라인 컨트롤의 최대 position을 구하여, text_len보다 클 경우 확장
-    let positions = find_control_text_positions(para);
-    let max_inline_pos = para
-        .controls
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| {
-            matches!(
-                c,
-                Control::Shape(_)
-                    | Control::Table(_)
-                    | Control::Picture(_)
-                    | Control::Equation(_)
-                    | Control::Footnote(_)
-                    | Control::Endnote(_)
-            )
-        })
-        .filter_map(|(i, _)| positions.get(i).copied())
-        .max()
-        .map(|p| p + 1) // position 뒤에 커서가 위치할 수 있으므로 +1
-        .unwrap_or(0);
-    text_len.max(max_inline_pos) + char_overlap_count
+    logical_paragraph_length(para)
 }
 
 /// 문단 내 컨트롤의 텍스트 위치를 복원한다.
@@ -61,10 +46,12 @@ pub(crate) fn logical_to_text_offset(para: &Paragraph, logical_offset: usize) ->
     // 텍스트 "abc[ctrl]XYZ" → 논리적: a(0) b(1) c(2) [ctrl](3) X(4) Y(5) Z(6)
     // ctrl_positions = [3] (텍스트 인덱스 3에 컨트롤 삽입)
     // 정렬된 (텍스트위치, 컨트롤인덱스) 목록
-    let mut sorted_ctrls: Vec<(usize, usize)> = ctrl_positions
+    let mut sorted_ctrls: Vec<(usize, usize)> = para
+        .controls
         .iter()
         .enumerate()
-        .map(|(ci, &pos)| (pos, ci))
+        .filter(|(_, ctrl)| is_logical_inline_control(ctrl))
+        .filter_map(|(ci, _)| ctrl_positions.get(ci).copied().map(|pos| (pos, ci)))
         .collect();
     sorted_ctrls.sort_by_key(|(pos, _)| *pos);
 
@@ -105,8 +92,12 @@ pub(crate) fn text_to_logical_offset(para: &Paragraph, text_offset: usize) -> us
     // text_offset 이전(미만)에 있는 컨트롤 수를 더함
     // pos < text_offset: 해당 컨트롤은 text_offset 앞에 위치
     // pos == text_offset: 컨트롤과 텍스트가 같은 위치 → 컨트롤이 먼저
-    let before_count = ctrl_positions
+    let before_count = para
+        .controls
         .iter()
+        .enumerate()
+        .filter(|(_, ctrl)| is_logical_inline_control(ctrl))
+        .filter_map(|(ci, _)| ctrl_positions.get(ci))
         .filter(|&&pos| pos < text_offset)
         .count();
     text_offset + before_count
@@ -115,8 +106,29 @@ pub(crate) fn text_to_logical_offset(para: &Paragraph, text_offset: usize) -> us
 /// 논리적 문단 길이 (텍스트 문자 + 텍스트 흐름에 위치하는 컨트롤 수).
 /// find_control_text_positions에 의해 텍스트 위치가 결정되는 컨트롤만 포함.
 pub(crate) fn logical_paragraph_length(para: &Paragraph) -> usize {
-    let ctrl_positions = find_control_text_positions(para);
-    para.text.chars().count() + ctrl_positions.len()
+    let text_len = para.text.chars().count();
+    let inline_count = para
+        .controls
+        .iter()
+        .filter(|ctrl| is_logical_inline_control(ctrl))
+        .count();
+    let char_overlap_count = para
+        .controls
+        .iter()
+        .filter(|ctrl| matches!(ctrl, Control::CharOverlap(_)))
+        .count();
+    let logical_positions = find_logical_control_positions(para);
+    let max_inline_end = para
+        .controls
+        .iter()
+        .enumerate()
+        .filter(|(_, ctrl)| is_logical_inline_control(ctrl))
+        .filter_map(|(ci, _)| logical_positions.get(ci).copied())
+        .max()
+        .map(|pos| pos + 1)
+        .unwrap_or(0);
+
+    (text_len + inline_count + char_overlap_count).max(max_inline_end + char_overlap_count)
 }
 
 /// 반환: positions[i] = para.controls[i]가 삽입되어야 할 텍스트 문자 인덱스
@@ -125,6 +137,28 @@ pub(crate) fn logical_paragraph_length(para: &Paragraph) -> usize {
 /// 본 함수는 기존 호출 경로를 유지하기 위한 thin wrapper 다.
 pub(crate) fn find_control_text_positions(para: &Paragraph) -> Vec<usize> {
     para.control_text_positions()
+}
+
+/// 편집/커서 이동용 control position 을 반환한다.
+///
+/// `find_control_text_positions()` 는 HWP/HWPX record stream 의 raw text position 을 보존한다.
+/// 반면 커서 이동은 `SectionDef`, `ColumnDef` 같은 구조 컨트롤을 건너뛰고,
+/// Shape/Table/Picture/Equation/Footnote/Endnote 같은 인라인 개체만 한 글자 폭으로 센다.
+pub(crate) fn find_logical_control_positions(para: &Paragraph) -> Vec<usize> {
+    let text_positions = find_control_text_positions(para);
+    let text_len = para.text.chars().count();
+    let mut inline_seen = 0usize;
+    let mut positions = Vec::with_capacity(para.controls.len());
+
+    for (ci, ctrl) in para.controls.iter().enumerate() {
+        let text_pos = text_positions.get(ci).copied().unwrap_or(text_len);
+        positions.push(text_pos + inline_seen);
+        if is_logical_inline_control(ctrl) {
+            inline_seen += 1;
+        }
+    }
+
+    positions
 }
 
 /// ShapeObject에서 TextBox를 추출하는 헬퍼
@@ -1367,7 +1401,9 @@ pub(crate) fn border_fills_equal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::document::SectionDef;
     use crate::model::footnote::Footnote;
+    use crate::model::page::ColumnDef;
 
     #[test]
     fn navigable_text_len_counts_trailing_footnote_marker() {
@@ -1379,6 +1415,26 @@ mod tests {
         };
 
         assert_eq!(find_control_text_positions(&para), vec![3]);
+        assert_eq!(navigable_text_len(&para), 4);
+    }
+
+    #[test]
+    fn logical_positions_ignore_section_and_column_controls() {
+        let para = Paragraph {
+            text: "  ".to_string(),
+            char_offsets: vec![24, 25],
+            controls: vec![
+                Control::SectionDef(Box::new(SectionDef::default())),
+                Control::ColumnDef(ColumnDef::default()),
+                Control::Footnote(Box::new(Footnote::default())),
+                Control::Footnote(Box::new(Footnote::default())),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(find_control_text_positions(&para), vec![0, 0, 0, 2]);
+        assert_eq!(find_logical_control_positions(&para), vec![0, 0, 0, 3]);
+        assert_eq!(logical_paragraph_length(&para), 4);
         assert_eq!(navigable_text_len(&para), 4);
     }
 }

@@ -1,7 +1,7 @@
 //! 커서 좌표/히트테스트/셀 커서/경로 기반 조작 관련 native 메서드
 
 use super::super::helpers::{
-    color_ref_to_css, find_char_at_x, find_control_text_positions, has_table_control,
+    color_ref_to_css, find_char_at_x, find_logical_control_positions, has_table_control,
     navigable_text_len, utf16_pos_to_char_idx, LineInfoResult,
 };
 use crate::document_core::DocumentCore;
@@ -41,7 +41,7 @@ impl DocumentCore {
             .get(section_idx)
             .and_then(|section| section.paragraphs.get(para_idx))
             .map(|para| {
-                let ctrl_positions = find_control_text_positions(para);
+                let ctrl_positions = find_logical_control_positions(para);
                 para.controls
                     .iter()
                     .enumerate()
@@ -52,11 +52,327 @@ impl DocumentCore {
             .unwrap_or_default();
 
         // 커서 결과를 담을 구조체
+        #[derive(Clone, Copy)]
         struct CursorHit {
             page_index: u32,
             x: f64,
             y: f64,
             height: f64,
+        }
+
+        fn is_inline_cursor_control(ctrl: &Control) -> bool {
+            match ctrl {
+                Control::Shape(_) | Control::Picture(_) | Control::Equation(_) => true,
+                Control::Table(table) => table.common.treat_as_char,
+                _ => false,
+            }
+        }
+
+        fn text_offset_after_same_pos_inline_controls(
+            para: &Paragraph,
+            text_offset: usize,
+        ) -> usize {
+            let ctrl_positions = para.control_text_positions();
+            let same_or_before_count = para
+                .controls
+                .iter()
+                .enumerate()
+                .filter(|(_, ctrl)| is_inline_cursor_control(ctrl))
+                .filter_map(|(ci, _)| ctrl_positions.get(ci))
+                .filter(|&&pos| pos <= text_offset)
+                .count();
+            text_offset + same_or_before_count
+        }
+
+        fn collect_inline_control_bboxes(
+            node: &RenderNode,
+            sec: usize,
+            para: usize,
+            bboxes: &mut std::collections::HashMap<usize, (f64, f64, f64, f64)>,
+        ) {
+            match &node.node_type {
+                RenderNodeType::Image(image_node) => {
+                    if image_node.section_index == Some(sec) && image_node.para_index == Some(para)
+                    {
+                        if let Some(ci) = image_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Equation(eq_node) => {
+                    if eq_node.section_index == Some(sec) && eq_node.para_index == Some(para) {
+                        if let Some(ci) = eq_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Group(group_node) => {
+                    if group_node.section_index == Some(sec) && group_node.para_index == Some(para)
+                    {
+                        if let Some(ci) = group_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Rectangle(rect_node) => {
+                    if rect_node.section_index == Some(sec) && rect_node.para_index == Some(para) {
+                        if let Some(ci) = rect_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Line(line_node) => {
+                    if line_node.section_index == Some(sec) && line_node.para_index == Some(para) {
+                        if let Some(ci) = line_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Ellipse(ell_node) => {
+                    if ell_node.section_index == Some(sec) && ell_node.para_index == Some(para) {
+                        if let Some(ci) = ell_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Path(path_node) => {
+                    if path_node.section_index == Some(sec) && path_node.para_index == Some(para) {
+                        if let Some(ci) = path_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                RenderNodeType::Table(table_node) => {
+                    if table_node.section_index == Some(sec) && table_node.para_index == Some(para)
+                    {
+                        if let Some(ci) = table_node.control_index {
+                            bboxes.insert(
+                                ci,
+                                (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+
+            for child in &node.children {
+                collect_inline_control_bboxes(child, sec, para, bboxes);
+            }
+        }
+
+        fn collect_text_caret_stops(
+            node: &RenderNode,
+            sec: usize,
+            para_idx: usize,
+            para: &Paragraph,
+            raw_text_index: &mut usize,
+            stops: &mut std::collections::BTreeMap<usize, CursorHit>,
+            page_index: u32,
+        ) {
+            if let RenderNodeType::TextRun(ref text_run) = node.node_type {
+                if text_run.section_index == Some(sec)
+                    && text_run.para_index == Some(para_idx)
+                    && text_run.cell_context.is_none()
+                    && text_run.char_start.is_some()
+                {
+                    let para_chars: Vec<char> = para.text.chars().collect();
+                    let run_chars: Vec<char> = text_run.text.chars().collect();
+                    let positions = compute_char_positions(&text_run.text, &text_run.style);
+                    let font_size = text_run.style.font_size;
+                    let ascent = font_size * 0.8;
+                    let caret_y = node.bbox.y + text_run.baseline - ascent;
+
+                    for (idx, ch) in run_chars.iter().enumerate() {
+                        if *ch == '\u{fffc}' {
+                            continue;
+                        }
+                        if *raw_text_index >= para_chars.len() {
+                            break;
+                        }
+                        if *ch != para_chars[*raw_text_index] {
+                            continue;
+                        }
+
+                        let logical_start =
+                            text_offset_after_same_pos_inline_controls(para, *raw_text_index);
+                        let x0 = node.bbox.x + positions.get(idx).copied().unwrap_or(0.0);
+                        let x1 = node.bbox.x
+                            + positions
+                                .get(idx + 1)
+                                .copied()
+                                .or_else(|| positions.last().copied())
+                                .unwrap_or(0.0);
+
+                        stops.entry(logical_start).or_insert(CursorHit {
+                            page_index,
+                            x: x0,
+                            y: caret_y,
+                            height: font_size,
+                        });
+                        stops.entry(logical_start + 1).or_insert(CursorHit {
+                            page_index,
+                            x: x1,
+                            y: caret_y,
+                            height: font_size,
+                        });
+                        *raw_text_index += 1;
+                    }
+                }
+            }
+
+            for child in &node.children {
+                collect_text_caret_stops(
+                    child,
+                    sec,
+                    para_idx,
+                    para,
+                    raw_text_index,
+                    stops,
+                    page_index,
+                );
+            }
+        }
+
+        fn find_inline_flow_cursor_hit(
+            tree: &crate::renderer::render_tree::PageRenderTree,
+            sec: usize,
+            para_idx: usize,
+            para: &Paragraph,
+            offset: usize,
+            page_index: u32,
+        ) -> Option<CursorHit> {
+            if !para.controls.iter().any(is_inline_cursor_control) {
+                return None;
+            }
+
+            let mut stops = std::collections::BTreeMap::new();
+            let mut raw_text_index = 0usize;
+            collect_text_caret_stops(
+                &tree.root,
+                sec,
+                para_idx,
+                para,
+                &mut raw_text_index,
+                &mut stops,
+                page_index,
+            );
+
+            let mut control_bboxes = std::collections::HashMap::new();
+            collect_inline_control_bboxes(&tree.root, sec, para_idx, &mut control_bboxes);
+            let ctrl_positions = find_logical_control_positions(para);
+            let raw_ctrl_positions = para.control_text_positions();
+            let mut inline_controls = Vec::new();
+
+            for (ci, ctrl) in para.controls.iter().enumerate() {
+                if !is_inline_cursor_control(ctrl) {
+                    continue;
+                }
+                let Some(pos) = ctrl_positions.get(ci).copied() else {
+                    continue;
+                };
+                let Some(raw_pos) = raw_ctrl_positions.get(ci).copied() else {
+                    continue;
+                };
+                let Some((x, y, w, h)) = control_bboxes.get(&ci).copied() else {
+                    continue;
+                };
+                inline_controls.push((ci, raw_pos, pos, x, x + w));
+
+                let line_metrics = stops
+                    .range(..=pos + 1)
+                    .next_back()
+                    .map(|(_, hit)| (hit.y, hit.height))
+                    .or_else(|| stops.values().next().map(|hit| (hit.y, hit.height)))
+                    .unwrap_or((y, h.max(10.0)));
+
+                stops.insert(
+                    pos,
+                    CursorHit {
+                        page_index,
+                        x,
+                        y: line_metrics.0,
+                        height: line_metrics.1,
+                    },
+                );
+                stops.insert(
+                    pos + 1,
+                    CursorHit {
+                        page_index,
+                        x: x + w,
+                        y: line_metrics.0,
+                        height: line_metrics.1,
+                    },
+                );
+            }
+            inline_controls.sort_by_key(|&(ci, raw_pos, pos, _, _)| (raw_pos, pos, ci));
+
+            let para_chars: Vec<char> = para.text.chars().collect();
+            for pair in inline_controls.windows(2) {
+                let (_, prev_raw, prev_pos, _, prev_right) = pair[0];
+                let (_, next_raw, next_pos, next_left, _) = pair[1];
+                if next_raw <= prev_raw || next_left <= prev_right {
+                    continue;
+                }
+
+                let Some(between) = para_chars.get(prev_raw..next_raw) else {
+                    continue;
+                };
+                if between.is_empty() || !between.iter().all(|ch| *ch == ' ') {
+                    continue;
+                }
+
+                let space_count = between.len();
+                if next_pos != prev_pos + 1 + space_count {
+                    continue;
+                }
+
+                let Some(metrics) = stops
+                    .get(&(prev_pos + 1))
+                    .or_else(|| stops.get(&next_pos))
+                    .or_else(|| stops.values().next())
+                    .copied()
+                else {
+                    continue;
+                };
+
+                for step in 0..=space_count {
+                    let ratio = step as f64 / space_count as f64;
+                    let x = prev_right + (next_left - prev_right) * ratio;
+                    stops.insert(
+                        prev_pos + 1 + step,
+                        CursorHit {
+                            page_index,
+                            x,
+                            y: metrics.y,
+                            height: metrics.height,
+                        },
+                    );
+                }
+            }
+
+            stops.get(&offset).copied()
         }
 
         // 렌더 트리에서 커서 위치를 찾는 재귀 함수
@@ -196,6 +512,25 @@ impl DocumentCore {
         // 1차: 정확한 앵커(zero-width 노드) 우선 검색, 2차: 일반 검색
         for &page_num in &pages {
             let tree = self.build_page_tree(page_num)?;
+            if !self.show_control_codes {
+                if let Some(section) = self.document.sections.get(section_idx) {
+                    if let Some(para) = section.paragraphs.get(para_idx) {
+                        if let Some(hit) = find_inline_flow_cursor_hit(
+                            &tree,
+                            section_idx,
+                            para_idx,
+                            para,
+                            char_offset,
+                            page_num,
+                        ) {
+                            return Ok(format!(
+                                "{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
+                                hit.page_index, hit.x, hit.y, hit.height
+                            ));
+                        }
+                    }
+                }
+            }
             let exact_hit = find_cursor_in_node(
                 &tree.root,
                 section_idx,
@@ -230,7 +565,8 @@ impl DocumentCore {
             if let Some(section) = self.document.sections.get(section_idx) {
                 if let Some(para) = section.paragraphs.get(para_idx) {
                     let text_len = para.text.chars().count();
-                    let ctrl_positions = crate::document_core::find_control_text_positions(para);
+                    let ctrl_positions =
+                        crate::document_core::helpers::find_logical_control_positions(para);
 
                     // char_offset 위치에 인라인 컨트롤이 있는지 확인
                     let inline_ctrl = para.controls.iter().enumerate().find(|(ci, ctrl)| {
@@ -942,7 +1278,7 @@ impl DocumentCore {
                                 break;
                             }
                             let ctrl_positions =
-                                crate::document_core::find_control_text_positions(para);
+                                crate::document_core::helpers::find_logical_control_positions(para);
                             let char_offset = ctrl_positions.get(ci).copied().unwrap_or(0);
                             // 클릭이 Shape 오른쪽 절반이면 Shape 뒤(offset+1)
                             let offset = if x > sx + sw / 2.0 {

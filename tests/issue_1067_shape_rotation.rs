@@ -27,6 +27,28 @@ fn read_sample(rel: &str) -> Vec<u8> {
     fs::read(&path).unwrap_or_else(|e| panic!("read {}: {}", rel, e))
 }
 
+fn control_kind(ctrl: &Control) -> &'static str {
+    match ctrl {
+        Control::SectionDef(_) => "SectionDef",
+        Control::ColumnDef(_) => "ColumnDef",
+        Control::Shape(_) => "Shape",
+        _ => "Other",
+    }
+}
+
+fn extract_rotate_center_x(svg: &str, marker: &str) -> f64 {
+    let start = svg
+        .find(marker)
+        .unwrap_or_else(|| panic!("SVG transform marker 없음: {}", marker))
+        + marker.len();
+    let end = svg[start..]
+        .find(',')
+        .unwrap_or_else(|| panic!("SVG rotate center x 구분자 없음: {}", marker));
+    svg[start..start + end]
+        .parse::<f64>()
+        .unwrap_or_else(|e| panic!("SVG rotate center x parse 실패: {}: {}", marker, e))
+}
+
 /// HWPX polygon 의 `<hc:pt>` 점들이 IR PolygonShape::points 에 4 개로 매핑.
 #[test]
 fn issue_1067_hwpx_polygon_points_mapped() {
@@ -152,4 +174,56 @@ fn issue_1067_svg_no_object_replacement_character() {
         !svg.contains('\u{FFFC}'),
         "SVG 에 U+FFFC (OBJ placeholder) 표시되지 않음 (inline 컨트롤 placeholder 는 invisible)"
     );
+}
+
+/// Issue #1071: HWPX secPr 도 HWP 와 같은 문단 control stream 슬롯을 가져야 한다.
+///
+/// secPr 를 `Section.section_def` 로만 보존하고 `Control::SectionDef` 를 만들지 않으면,
+/// HWPX paragraph text 의 inline marker 수와 `para.controls` 순서가 어긋난다. 이 경우
+/// treat-as-character 도형의 문단 내 가로 위치가 HWP 정답지보다 왼쪽으로 밀린다.
+#[test]
+fn issue_1071_hwpx_secpr_materialized_in_control_stream() {
+    let hwp_bytes = read_sample("samples/shape-001.hwp");
+    let hwpx_bytes = read_sample("samples/hwpx/shape-001.hwpx");
+    let hwp_doc = parse_document(&hwp_bytes).expect("parse hwp");
+    let hwpx_doc = parse_document(&hwpx_bytes).expect("parse hwpx");
+
+    let hwp_para = &hwp_doc.sections[0].paragraphs[0];
+    let hwpx_para = &hwpx_doc.sections[0].paragraphs[0];
+
+    let hwp_kinds: Vec<_> = hwp_para.controls.iter().map(control_kind).collect();
+    let hwpx_kinds: Vec<_> = hwpx_para.controls.iter().map(control_kind).collect();
+    assert_eq!(
+        hwpx_kinds, hwp_kinds,
+        "HWPX secPr/colPr/shape control stream 은 HWP 정답지와 같은 순서여야 함"
+    );
+    assert_eq!(
+        hwpx_para.char_offsets, hwp_para.char_offsets,
+        "HWPX char_offsets 도 HWP 정답지와 같아야 TAC control 위치가 안정됨"
+    );
+    assert_eq!(
+        hwpx_para.control_text_positions(),
+        hwp_para.control_text_positions(),
+        "HWPX control_text_positions 는 HWP 정답지와 같아야 함"
+    );
+}
+
+/// Issue #1071: HWPX TAC 도형의 SVG 가로 위치가 HWP 정답지와 같아야 한다.
+#[test]
+fn issue_1071_hwpx_tac_shape_svg_centers_match_hwp() {
+    let hwp_bytes = read_sample("samples/shape-001.hwp");
+    let hwpx_bytes = read_sample("samples/hwpx/shape-001.hwpx");
+    let hwp_doc = rhwp::wasm_api::HwpDocument::from_bytes(&hwp_bytes).expect("parse hwp");
+    let hwpx_doc = rhwp::wasm_api::HwpDocument::from_bytes(&hwpx_bytes).expect("parse hwpx");
+    let hwp_svg = hwp_doc.render_page_svg_native(0).expect("hwp svg");
+    let hwpx_svg = hwpx_doc.render_page_svg_native(0).expect("hwpx svg");
+
+    for marker in ["rotate(-270,", "rotate(90,"] {
+        let hwp_x = extract_rotate_center_x(&hwp_svg, marker);
+        let hwpx_x = extract_rotate_center_x(&hwpx_svg, marker);
+        assert!(
+            (hwp_x - hwpx_x).abs() < 0.01,
+            "HWP/HWPX TAC shape center mismatch: marker={marker}, hwp={hwp_x}, hwpx={hwpx_x}"
+        );
+    }
 }

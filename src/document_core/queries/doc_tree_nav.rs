@@ -4,7 +4,7 @@
 //! DFS로 순회하여 다음/이전 편집 가능 위치를 찾는다.
 
 use crate::document_core::helpers::{
-    find_control_text_positions, get_textbox_from_shape, navigable_text_len,
+    find_logical_control_positions, get_textbox_from_shape, navigable_text_len,
 };
 use crate::document_core::DocumentCore;
 use crate::model::control::Control;
@@ -171,7 +171,7 @@ fn next_cell_index(
 impl DocumentCore {
     /// 외부에서 전달받은 context의 ctrl_text_pos를 실제 문서 데이터로 복원한다.
     /// TypeScript 측에서 ctrl_text_pos를 모르는 경우 0으로 전달하므로,
-    /// Rust가 find_control_text_positions()로 올바른 값을 채운다.
+    /// Rust가 편집용 logical control position 으로 올바른 값을 채운다.
     pub(crate) fn fix_context_text_positions(
         sections: &[Section],
         sec: usize,
@@ -188,7 +188,7 @@ impl DocumentCore {
 
         for entry in context {
             let ctrl_text_pos = if let Some(para) = paragraphs.get(entry.parent_para) {
-                let positions = find_control_text_positions(para);
+                let positions = find_logical_control_positions(para);
                 positions
                     .get(entry.ctrl_idx)
                     .copied()
@@ -261,7 +261,7 @@ impl DocumentCore {
         // Step 1: 현재 문단 내 탐색
         if let Some(current_para) = paragraphs.get(para) {
             let text_len = navigable_text_len(current_para);
-            let ctrl_positions = find_control_text_positions(current_para);
+            let ctrl_positions = find_logical_control_positions(current_para);
 
             if forward {
                 // Forward: char_offset 이후의 컨트롤 또는 텍스트 끝 확인
@@ -637,7 +637,7 @@ impl DocumentCore {
 
         if let Some(current_para) = paragraphs.get(para) {
             let text_len = navigable_text_len(current_para);
-            let ctrl_positions = find_control_text_positions(current_para);
+            let ctrl_positions = find_logical_control_positions(current_para);
 
             // offset 0에 컨트롤이 있는지 확인
             for (ci, ctrl) in current_para.controls.iter().enumerate() {
@@ -709,7 +709,7 @@ impl DocumentCore {
 
         if let Some(current_para) = paragraphs.get(para) {
             let text_len = navigable_text_len(current_para);
-            let ctrl_positions = find_control_text_positions(current_para);
+            let ctrl_positions = find_logical_control_positions(current_para);
 
             // 문단 끝에 컨트롤이 있는지 역순 확인
             for (ci, ctrl) in current_para.controls.iter().enumerate().rev() {
@@ -915,7 +915,7 @@ impl DocumentCore {
             if exited.ctrl_text_pos <= text_len {
                 // 컨트롤 다음 위치에 다른 편집 가능 컨트롤이 있는지 확인
                 if let Some(parent_p) = parent_paras.get(exited.parent_para) {
-                    let ctrl_positions = find_control_text_positions(parent_p);
+                    let ctrl_positions = find_logical_control_positions(parent_p);
                     // 오버플로우 타겟 탈출 시 소스 컨트롤 건너뛰기
                     let skip_ctrl_idx = target_link.map(|l| l.source_ctrl_idx);
 
@@ -997,7 +997,7 @@ impl DocumentCore {
             // 같은 텍스트 위치에 이전 편집 가능 컨트롤이 있으면 backward 진입
             // (모든 컨트롤이 ctrl_text_pos=0인 문단에서 역방향 탐색에 필요)
             if let Some(parent_p) = parent_paras.get(exited.parent_para) {
-                let ctrl_positions = find_control_text_positions(parent_p);
+                let ctrl_positions = find_logical_control_positions(parent_p);
                 for (ci, ctrl) in parent_p.controls.iter().enumerate().rev() {
                     if ci >= exited.ctrl_idx {
                         continue;
@@ -1030,7 +1030,7 @@ impl DocumentCore {
                 let prev_pos = exited.ctrl_text_pos - 1;
                 // prev_pos에 다른 편집 가능 컨트롤이 있는지 확인
                 if let Some(parent_p) = parent_paras.get(exited.parent_para) {
-                    let ctrl_positions = find_control_text_positions(parent_p);
+                    let ctrl_positions = find_logical_control_positions(parent_p);
                     for (ci, ctrl) in parent_p.controls.iter().enumerate().rev() {
                         if ci >= exited.ctrl_idx {
                             continue;
