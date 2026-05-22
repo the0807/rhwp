@@ -105,6 +105,22 @@ variant 단일 단 partial-table split allowed_top_vpos=1500.
 - **HWP5 variant 의 paragraph vpos 를 HWP3 형식으로 normalize**
 - **모든 sample16 fixture 의 paragraph 분포 = HWP3 정합** ✓
 
+### Stage 6a (b5fb7871): recompose_for_cell_width multi-line 지원
+- compose_lines fallback (CHARS_PER_LINE=45) 결과 multi-line case 도 cell width 기반
+  재분할 — 모든 lines runs 합쳐 single line → re-split
+
+### Stage 6b (f7dbf593): paragraph_layout 의 line_segs.empty recompose
+- 본문 paragraph 의 line_segs.empty case 에서 column inner width 기반 recompose 호출
+- **paragraph_layout (렌더링 path) 의 line 재분할 정합**
+
+### Stage 6c (48561b90): typeset/measurement path 통합 + lh/ls 분해 정정
+- `format_paragraph` (typeset) + `HeightMeasurer::measure_paragraph` 양쪽에 동일 recompose 적용
+- `recompute_lh` 분기 (line_segs.empty path) 의 `(line_height, line_spacing)` 분해 정정
+  - 종전: `lh = max_fs × 1.6, ls = 0` baking → HWP3/Group B 의 `(lh=base, ls=extra)` 와 의미 불일치
+  - 정정: Percent 시 `(base=max_fs, extra=max_fs × (ls_val-100)/100)`
+- **Group A (변환기/2010/2022) pi=417 h=21.1 (lines=17.3) = Group B/HWP3 정합** ✓
+- typeset/render path 측정 통일 → 시각 정합 달성 (작업지시자 시각 검증 확인)
+
 ---
 
 ## 5. 산출물
@@ -114,8 +130,13 @@ variant 단일 단 partial-table split allowed_top_vpos=1500.
 | 파일 | 변경 |
 |------|------|
 | `src/parser/mod.rs` | margin /2 제거 + normalize_variant_paragraph_vpos 함수 추가 |
-| `src/renderer/typeset.rs` | narrow guard v2 + Copilot allowed_top_vpos |
+| `src/renderer/typeset.rs` | narrow guard v2 + Copilot allowed_top_vpos + format_paragraph recompose + lh/ls 분해 |
 | `src/renderer/pagination/engine.rs` | 동일 narrow guard v2 |
+| `src/renderer/composer.rs` | recompose_for_cell_width multi-line 지원 (Stage 6a) |
+| `src/renderer/layout/paragraph_layout.rs` | line_segs.empty paragraph 의 column 기반 recompose (Stage 6b) |
+| `src/renderer/height_measurer.rs` | measure_paragraph + recompose + lh/ls 분해 + column_width_px API (Stage 6c) |
+| `src/renderer/pagination.rs` | column_width_px 전달 (Stage 6c) |
+| `src/document_core/queries/rendering.rs` | column_width_px 전달 (Stage 6c) |
 | `tests/issue_1035_alignment.rs` | sample16-2022 page count 단언 정정 |
 
 ### 5.2 진단 자료 (13개)
@@ -177,8 +198,8 @@ cargo test --release --tests     → FAILED 없음
 
 ### 7.2 시각 검증 (작업지시자 확인)
 
-- 모든 sample16 fixture 5종 동일 paragraph 분포 + 한컴 정답지 (pdf/hwp3-sample16-hwp5-2022.pdf) 정합
-- 작업지시자 명시: "시각검증 완료. pr 준비"
+- Stage 5 시점 — 모든 sample16 fixture 5종 동일 paragraph 분포 정합 (작업지시자: "시각검증 완료")
+- Stage 6c 시점 — typeset/render 측정 통합 후 6 fixture 동일 paragraph height (작업지시자: "시각적 검증 확인")
 
 ---
 
@@ -188,8 +209,13 @@ cargo test --release --tests     → FAILED 없음
 - Head: `local/task1042`
 - Closes: #1042
 - Stacked on: 없음 (upstream/devel 동기화 후 단독)
+- Conflict 검사: open PRs (#1084, #1083) 와 `git merge-tree` virtual merge 결과 `<<<<<<<` 0개 — auto-merge 가능
 
 ### Commit history (local/devel 분기 후)
+- `48561b90` Task #1042 Stage 6c: format_paragraph + HeightMeasurer recompose + lh/ls 분해 정정
+- `f7dbf593` Task #1042 Stage 6b: 본문 paragraph 의 line_segs.empty case 의 column 기반 recompose
+- `b5fb7871` Task #1042 Stage 6a: recompose_for_cell_width multi-line 지원
+- `56c6f4b3` Task #1042 최종 보고서 + 오늘할일 갱신 (Stage 5 시점)
 - `2463488a` Task #1042 Stage 5: HWP5 variant paragraph vpos normalize
 - `c1754847` Task #1042 Stage 2: variant_vpos_reset_break narrow guard v2
 - `55871eb3` Merge upstream/devel into local/task1042 (Task #1042 동기화 v2)
