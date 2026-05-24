@@ -36,6 +36,24 @@ fn task1105_sample16_hwp5_page_break_before_section_4_matches_hancom() {
     assert!(page22.contains("FullParagraph  pi=440"));
     assert!(page22.contains("Table          pi=441"));
     assert!(page22.contains("FullParagraph  pi=449"));
+    assert!(
+        !page22.contains("pi=450"),
+        "firewall paragraph must not leak into page 22:\n{page22}"
+    );
+
+    let page23 = doc.dump_page_items(Some(22));
+    assert!(
+        page23.contains("FullParagraph  pi=450"),
+        "firewall paragraph must start page 23:\n{page23}"
+    );
+    assert!(
+        page23.contains("pi=460"),
+        "page 23 must reach the integrated DB cluster paragraph:\n{page23}"
+    );
+    assert!(
+        !page23.contains("pi=461"),
+        "next target-system paragraph must not remain on page 23:\n{page23}"
+    );
 }
 
 fn assert_sample16_hwp5_business_selection_starts_next_page(rel_path: &str) {
@@ -81,9 +99,49 @@ fn assert_sample16_hwp5_business_selection_starts_next_page(rel_path: &str) {
     );
 }
 
+fn assert_sample16_hwp5_server_requirements_page_matches_hancom(rel_path: &str) {
+    let doc = load_doc(rel_path);
+    assert_eq!(doc.page_count(), 64, "{rel_path}");
+
+    let page22 = doc.dump_page_items(Some(21));
+    assert!(
+        page22.contains("FullParagraph  pi=449"),
+        "RDBMS paragraph must close page 22 for {rel_path}:\n{page22}"
+    );
+    assert!(
+        !page22.contains("pi=450"),
+        "firewall paragraph must not leak into page 22 for {rel_path}:\n{page22}"
+    );
+
+    let page23 = doc.dump_page_items(Some(22));
+    assert!(
+        page23.contains("FullParagraph  pi=450"),
+        "firewall paragraph must start page 23 for {rel_path}:\n{page23}"
+    );
+    assert!(
+        page23.contains("FullParagraph  pi=451"),
+        "hardware/software paragraph must follow on page 23 for {rel_path}:\n{page23}"
+    );
+    assert!(
+        page23.contains("pi=460"),
+        "page 23 must reach the integrated DB cluster paragraph for {rel_path}:\n{page23}"
+    );
+    assert!(
+        !page23.contains("pi=461"),
+        "next target-system paragraph must not remain on page 23 for {rel_path}:\n{page23}"
+    );
+}
+
 #[test]
 fn task1105_sample16_hwp5_2010_business_selection_break_matches_hancom() {
     assert_sample16_hwp5_business_selection_starts_next_page("samples/hwp3-sample16-hwp5-2010.hwp");
+}
+
+#[test]
+fn task1105_sample16_hwp5_2010_server_requirements_page_matches_hancom() {
+    assert_sample16_hwp5_server_requirements_page_matches_hancom(
+        "samples/hwp3-sample16-hwp5-2010.hwp",
+    );
 }
 
 #[test]
@@ -92,13 +150,34 @@ fn task1105_sample16_hwp5_2018_business_selection_break_matches_hancom() {
 }
 
 #[test]
+fn task1105_sample16_hwp5_2018_server_requirements_page_matches_hancom() {
+    assert_sample16_hwp5_server_requirements_page_matches_hancom(
+        "samples/hwp3-sample16-hwp5-2018.hwp",
+    );
+}
+
+#[test]
 fn task1105_sample16_hwp5_2022_business_selection_break_matches_hancom() {
     assert_sample16_hwp5_business_selection_starts_next_page("samples/hwp3-sample16-hwp5-2022.hwp");
 }
 
 #[test]
+fn task1105_sample16_hwp5_2022_server_requirements_page_matches_hancom() {
+    assert_sample16_hwp5_server_requirements_page_matches_hancom(
+        "samples/hwp3-sample16-hwp5-2022.hwp",
+    );
+}
+
+#[test]
 fn task1105_sample16_hwp5_2024_business_selection_break_matches_hancom() {
     assert_sample16_hwp5_business_selection_starts_next_page("samples/hwp3-sample16-hwp5-2024.hwp");
+}
+
+#[test]
+fn task1105_sample16_hwp5_2024_server_requirements_page_matches_hancom() {
+    assert_sample16_hwp5_server_requirements_page_matches_hancom(
+        "samples/hwp3-sample16-hwp5-2024.hwp",
+    );
 }
 
 #[test]

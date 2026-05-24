@@ -1196,6 +1196,14 @@ pub fn recompose_for_cell_width(
     if cell_inner_width_px <= 0.0 {
         return;
     }
+    // Some HWP3-origin HWP5 files omit PARA_LINE_SEG for legacy bullet paragraphs.
+    // HY신명조's embedded metrics are slightly wider than Hancom's converted reflow here,
+    // so use a small tolerance only for the tight leading-body style pattern.
+    let effective_width_px = if is_hwp3_hwp5_missing_lineseg_legacy_bullet(para, composed, styles) {
+        cell_inner_width_px * 1.04
+    } else {
+        cell_inner_width_px
+    };
     // [Task #1042 Stage 6a] multi-line 지원 — compose_lines fallback 의 CHARS_PER_LINE=45
     // heuristic 결과가 cell width 와 일치 안 할 수 있음. 모든 lines 의 runs 를 합쳐서
     // 단일 line 으로 만든 후 cell width 기반 re-split.
@@ -1217,11 +1225,42 @@ pub fn recompose_for_cell_width(
     };
     composed.lines.clear();
     let total_width = estimate_composed_line_width(&combined_line, styles);
-    if total_width <= cell_inner_width_px + 0.5 {
+    if total_width <= effective_width_px + 0.5 {
         composed.lines.push(combined_line);
         return;
     }
-    composed.lines = split_composed_line_by_width(&combined_line, cell_inner_width_px, styles);
+    composed.lines = split_composed_line_by_width(&combined_line, effective_width_px, styles);
+}
+
+fn is_hwp3_hwp5_missing_lineseg_legacy_bullet(
+    para: &Paragraph,
+    composed: &ComposedParagraph,
+    styles: &ResolvedStyleSet,
+) -> bool {
+    let has_tight_leading_body_style = para.char_shapes.get(1).is_some_and(|cs_ref| {
+        cs_ref.start_pos <= 3
+            && styles
+                .char_styles
+                .get(cs_ref.char_shape_id as usize)
+                .map(|cs| cs.letter_spacing <= -3.0)
+                .unwrap_or(false)
+    });
+
+    para.line_segs.is_empty()
+        && para.controls.is_empty()
+        && para.text.starts_with('\u{F03C5}')
+        && has_tight_leading_body_style
+        && composed
+            .lines
+            .iter()
+            .flat_map(|line| &line.runs)
+            .any(|run| {
+                styles
+                    .char_styles
+                    .get(run.char_style_id as usize)
+                    .map(|cs| cs.font_family.split(',').next().unwrap_or("").trim() == "HY신명조")
+                    .unwrap_or(false)
+            })
 }
 
 /// 단일 ComposedLine 을 셀 가용 너비에 맞춰 다중 ComposedLine 으로 분할.

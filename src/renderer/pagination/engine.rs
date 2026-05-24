@@ -252,6 +252,15 @@ impl Paginator {
                         .and_then(|next_para| next_para.line_segs.first())
                         .filter(|ls| !is_synthetic_line_seg(ls))
                         .map(|ls| ls.vertical_pos);
+                    let bridge_missing_count = (prev_real_idx + 1..para_idx)
+                        .filter(|&i| {
+                            paragraphs.get(i).is_some_and(|p| {
+                                p.line_segs.is_empty()
+                                    && p.controls.is_empty()
+                                    && para_has_visible_text(p)
+                            })
+                        })
+                        .count();
                     let high_threshold = body_height_hu_for_variant * 95 / 100;
                     let table_heading_reset = prev_real_idx + 1 == para_idx
                         && para.line_segs.is_empty()
@@ -270,6 +279,13 @@ impl Paginator {
                             .and_then(|next_para| next_para.line_segs.first())
                             .filter(|ls| !is_synthetic_line_seg(ls))
                             .is_some_and(|ls| ls.vertical_pos <= 4000);
+                    let empty_bridge_heading_reset = para.line_segs.is_empty()
+                        && para.controls.is_empty()
+                        && para_has_visible_text(para)
+                        && para_sb_hu >= 500
+                        && bridge_missing_count == 1
+                        && prev_end_vpos > body_height_hu_for_variant * 80 / 100
+                        && prev_end_vpos <= body_height_hu_for_variant * 85 / 100;
 
                     let real_heading_or_bridge_reset = curr_real.is_some_and(|curr_first| {
                         let curr_first_vpos = curr_first.vertical_pos;
@@ -286,15 +302,6 @@ impl Paginator {
                             && prev_top_content_reset
                             && prev_prev_end_vpos
                                 .is_some_and(|end| end > body_height_hu_for_variant * 70 / 100);
-                        let bridge_missing_count = (prev_real_idx + 1..para_idx)
-                            .filter(|&i| {
-                                paragraphs.get(i).is_some_and(|p| {
-                                    p.line_segs.is_empty()
-                                        && p.controls.is_empty()
-                                        && para_has_visible_text(p)
-                                })
-                            })
-                            .count();
                         let bridged_reset = bridge_missing_count >= 2
                             && para.controls.is_empty()
                             && para_has_visible_text(para)
@@ -324,7 +331,10 @@ impl Paginator {
                             || bottom_heading_before_next_reset
                     });
 
-                    if table_heading_reset || real_heading_or_bridge_reset {
+                    if table_heading_reset
+                        || empty_bridge_heading_reset
+                        || real_heading_or_bridge_reset
+                    {
                         variant_vpos_reset_break = true;
                     }
                 }
