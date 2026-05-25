@@ -1701,20 +1701,25 @@ impl SvgRenderer {
         let is_circle = overlap.border_type == 1 || overlap.border_type == 2;
         let is_rect = overlap.border_type == 3 || overlap.border_type == 4;
 
+        // inner_char_size 해석:
+        //   > 0 → percent ratio (HWPX 양수 case 보존: 50 = 0.5)
+        //   < 0 → 10% step 축소 (한컴 정합: charSz=-3 → 1.0 + (-3)×0.10 = 0.70, 13pt→9.1pt)
+        //   == 0 → 기본 100%
         let size_ratio = if overlap.inner_char_size > 0 {
             overlap.inner_char_size as f64 / 100.0
+        } else if overlap.inner_char_size < 0 {
+            1.0 + overlap.inner_char_size as f64 * 0.10
         } else {
             1.0
         };
         let inner_font_size = font_size * size_ratio;
 
+        // 한컴은 동그라미 테두리도 글자색과 동일 색상으로 그림 (raw PDF 0 0 1 RG/rg).
+        // reversed(반전)는 기존대로 검정 채움 + 흰 글자.
+        let glyph_color = color_to_svg(style.color);
         let fill_color = if is_reversed { "#000000" } else { "none" };
-        let stroke_color = "#000000";
-        let text_color = if is_reversed {
-            "#FFFFFF"
-        } else {
-            &color_to_svg(style.color)
-        };
+        let stroke_color: &str = if is_reversed { "#000000" } else { &glyph_color };
+        let text_color: &str = if is_reversed { "#FFFFFF" } else { &glyph_color };
 
         let font_family_str = if style.font_family.is_empty() {
             "sans-serif".to_string()
@@ -1752,10 +1757,12 @@ impl SvgRenderer {
             let cy = bbox_y + bbox_h / 2.0;
 
             if is_circle {
-                let r = box_size / 2.0;
+                // 한컴 글자겹침은 세로로 긴 타원 (h/w ≈ 1.18). 한글 글리프 비율과 정합.
+                let ry = box_size / 2.0;
+                let rx = ry * 0.85;
                 self.output.push_str(&format!(
-                    "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.8\"/>\n",
-                    cx, cy, r, fill_color, stroke_color,
+                    "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.8\"/>\n",
+                    cx, cy, rx, ry, fill_color, stroke_color,
                 ));
             } else if is_rect {
                 let rx = cx - box_size / 2.0;
@@ -1804,20 +1811,20 @@ impl SvgRenderer {
         let is_circle = effective_border == 1 || effective_border == 2;
         let is_rect = effective_border == 3 || effective_border == 4;
 
+        // inner_char_size 해석 (draw_char_overlap와 동일 — 음수=10% step 축소)
         let size_ratio = if overlap.inner_char_size > 0 {
             overlap.inner_char_size as f64 / 100.0
+        } else if overlap.inner_char_size < 0 {
+            1.0 + overlap.inner_char_size as f64 * 0.10
         } else {
             1.0
         };
         let inner_font_size = font_size * size_ratio;
 
+        let glyph_color = color_to_svg(style.color);
         let fill_color = if is_reversed { "#000000" } else { "none" };
-        let stroke_color = "#000000";
-        let text_color = if is_reversed {
-            "#FFFFFF"
-        } else {
-            &color_to_svg(style.color)
-        };
+        let stroke_color: &str = if is_reversed { "#000000" } else { &glyph_color };
+        let text_color: &str = if is_reversed { "#FFFFFF" } else { &glyph_color };
 
         let font_family_str = if style.font_family.is_empty() {
             "sans-serif".to_string()
@@ -1842,12 +1849,13 @@ impl SvgRenderer {
         let cx = bbox_x + box_size / 2.0;
         let cy = bbox_y + bbox_h / 2.0;
 
-        // 도형 렌더링
+        // 도형 렌더링 — 세로로 긴 타원 (한컴 정합, rx=ry*0.85)
         if is_circle {
-            let r = box_size / 2.0;
+            let ry = box_size / 2.0;
+            let rx = ry * 0.85;
             self.output.push_str(&format!(
-                "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.8\"/>\n",
-                cx, cy, r, fill_color, stroke_color,
+                "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.8\"/>\n",
+                cx, cy, rx, ry, fill_color, stroke_color,
             ));
         } else if is_rect {
             let rx = cx - box_size / 2.0;

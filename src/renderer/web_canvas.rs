@@ -2650,19 +2650,27 @@ impl WebCanvasRenderer {
         let is_circle = overlap.border_type == 1 || overlap.border_type == 2;
         let is_rect = overlap.border_type == 3 || overlap.border_type == 4;
 
+        // inner_char_size 해석:
+        //   > 0 → percent ratio (HWPX 양수 case 보존)
+        //   < 0 → 10% step 축소 (한컴 정합: charSz=-3 → 0.70)
+        //   == 0 → 기본 100%
         let size_ratio = if overlap.inner_char_size > 0 {
             overlap.inner_char_size as f64 / 100.0
+        } else if overlap.inner_char_size < 0 {
+            1.0 + overlap.inner_char_size as f64 * 0.10
         } else {
             1.0
         };
         let inner_font_size = font_size * size_ratio;
 
+        // 동그라미 테두리 색 = 글자색 (한컴 정합). reversed는 기존대로 검정 채움.
+        let glyph_color = color_to_css(style.color);
         let fill_color = if is_reversed { "#000000" } else { "none" };
-        let stroke_color = "#000000";
+        let stroke_color: &str = if is_reversed { "#000000" } else { &glyph_color };
         let text_color = if is_reversed {
             "#FFFFFF".to_string()
         } else {
-            color_to_css(style.color)
+            glyph_color.clone()
         };
 
         let font_family = if style.font_family.is_empty() {
@@ -2694,9 +2702,13 @@ impl WebCanvasRenderer {
             let cy = bbox_y + bbox_h - box_size / 2.0;
 
             if is_circle {
-                let r = box_size / 2.0;
+                // 세로로 긴 타원 (한컴 정합, rx=ry*0.85)
+                let ry = box_size / 2.0;
+                let rx = ry * 0.85;
                 self.ctx.begin_path();
-                let _ = self.ctx.arc(cx, cy, r, 0.0, std::f64::consts::PI * 2.0);
+                let _ = self
+                    .ctx
+                    .ellipse(cx, cy, rx, ry, 0.0, 0.0, std::f64::consts::TAU);
                 if is_reversed {
                     self.ctx.set_fill_style_str(fill_color);
                     self.ctx.fill();
@@ -2755,19 +2767,23 @@ impl WebCanvasRenderer {
         let is_circle = effective_border == 1 || effective_border == 2;
         let is_rect = effective_border == 3 || effective_border == 4;
 
+        // inner_char_size 해석 (draw_char_overlap와 동일 — 음수=10% step 축소)
         let size_ratio = if overlap.inner_char_size > 0 {
             overlap.inner_char_size as f64 / 100.0
+        } else if overlap.inner_char_size < 0 {
+            1.0 + overlap.inner_char_size as f64 * 0.10
         } else {
             1.0
         };
         let inner_font_size = font_size * size_ratio;
 
+        let glyph_color = color_to_css(style.color);
         let fill_color = if is_reversed { "#000000" } else { "none" };
-        let stroke_color = "#000000";
+        let stroke_color: &str = if is_reversed { "#000000" } else { &glyph_color };
         let text_color = if is_reversed {
             "#FFFFFF".to_string()
         } else {
-            color_to_css(style.color)
+            glyph_color.clone()
         };
 
         let font_family = if style.font_family.is_empty() {
@@ -2780,11 +2796,14 @@ impl WebCanvasRenderer {
         let cx = bbox_x + box_size / 2.0;
         let cy = bbox_y + bbox_h - box_size / 2.0;
 
-        // 도형 렌더링
+        // 도형 렌더링 — 세로로 긴 타원 (한컴 정합, rx=ry*0.85)
         if is_circle {
-            let r = box_size / 2.0;
+            let ry = box_size / 2.0;
+            let rx = ry * 0.85;
             self.ctx.begin_path();
-            let _ = self.ctx.arc(cx, cy, r, 0.0, std::f64::consts::PI * 2.0);
+            let _ = self
+                .ctx
+                .ellipse(cx, cy, rx, ry, 0.0, 0.0, std::f64::consts::TAU);
             if is_reversed {
                 self.ctx.set_fill_style_str(fill_color);
                 self.ctx.fill();

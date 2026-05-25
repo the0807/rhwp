@@ -4137,6 +4137,9 @@ fn parse_compose(
                     _ => 0, // SPREAD
                 };
             }
+            // 한컴 HWPX는 `composeText="장"`처럼 속성에 글자를 넣기도 한다.
+            // 자식 element form(<composeText>장</composeText>)이 뒤에 나오면 그쪽이 덮어쓴다.
+            b"composeText" => co.chars = attr_str(&attr).chars().collect(),
             _ => {}
         }
     }
