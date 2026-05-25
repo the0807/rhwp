@@ -30,6 +30,7 @@
 - [작은 단위 PATCH 회전 운영](feedback_small_batch_release_strategy.md) — 빠른 회전, 위험 분산
 - [PR 생성은 별도 승인 후 진행](feedback_pr_requires_explicit_approval.md) — PR 준비와 GitHub PR 생성 분리
 - [PR 본문 한국어 작성 필수](feedback_pr_body_korean_required.md) — 내부 타스크 PR 제목과 본문은 한국어로 작성
+- [PR 전 로컬 CI급 검증 필수](feedback_pr_ci_before_pr.md) — PR 생성/최종 푸시 전에 CI급 로컬 테스트 먼저 실행
 
 ## feedback — 시각 판정/한컴 호환
 - [시각 판정 권위](feedback_visual_judgment_authority.md) — 한컴 2022 정답지, Claude는 정량 측정만 보조
