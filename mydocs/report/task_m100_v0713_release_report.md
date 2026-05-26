@@ -20,6 +20,14 @@ PATCH 버전으로 진행한다.
 | `rhwp-vscode/package.json` | ✓ |
 | `rhwp-vscode/package-lock.json` | ✓ |
 | `npm/editor/package.json` | ✓ |
+| `rhwp-chrome/package.json` | `0.2.2 -> 0.2.3` |
+| `rhwp-chrome/package-lock.json` | stale `0.1.0` -> `0.2.3` |
+| `rhwp-chrome/manifest.json` | `0.2.2 -> 0.2.3` |
+| `rhwp-chrome/content-script.js` | `0.2.2 -> 0.2.3` |
+| `rhwp-chrome/dev-tools-inject.js` | `0.2.2 -> 0.2.3` |
+| `rhwp-firefox/package.json` | `0.2.2 -> 0.2.3` |
+| `rhwp-firefox/package-lock.json` | stale `0.1.1` -> `0.2.3` |
+| `rhwp-firefox/manifest.json` | `0.2.2 -> 0.2.3` |
 
 `Cargo.lock`의 `rhwp` package entry는 이미 `0.7.13` 상태이며 추가 diff가 없다.
 
@@ -41,6 +49,9 @@ PATCH 버전으로 진행한다.
   - treat-as-char 표, 중첩 표, 그림 pushdown/vpos, 미주 다단, 하단 overflow 관련 보정
 - Chrome 확장
   - `file://` 로컬 문서 안내 및 중복 다운로드 억제
+- 브라우저 확장 배포
+  - Chrome/Edge/Firefox 확장 `0.2.3` 패치 배포 준비
+  - Chrome 빌드 스크립트가 `dist/`를 먼저 정리하도록 보강해 stale asset 혼입 방지
 - PR 처리
   - 외부 기여자 PR cherry-pick/review 결과 반영
 
@@ -57,7 +68,11 @@ PATCH 버전으로 진행한다.
 | `docker compose --env-file .env.docker run --rm wasm` | 통과 |
 | `rhwp-studio npm run build` | 통과 |
 | `rhwp-chrome npm run build` | 통과 |
+| `rhwp-firefox npm run build` | 통과 |
 | `rhwp-vscode npm run compile` | 통과 |
+| Chrome/Edge 제출용 zip | `rhwp-chrome/rhwp-chrome-0.2.3.zip`, `rhwp-chrome/rhwp-edge-0.2.3.zip` |
+| Firefox 제출용 zip | `rhwp-firefox/rhwp-firefox-0.2.3.zip` |
+| Firefox AMO source zip | `rhwp-firefox/rhwp-source-0.2.3.zip` |
 
 ## 6. 주의 사항
 

@@ -93,12 +93,12 @@ v{MAJOR}.{MINOR}.{PATCH}
 
 **rhwp-chrome / rhwp-edge / rhwp-firefox / rhwp-safari** 의 버전은 라이브러리(Cargo.toml) 와 **독립적으로 관리**한다.
 
-| 영역 | 2026-04-23 현재 |
+| 영역 | 2026-05-26 현재 |
 |------|----------------|
-| 라이브러리 (Cargo.toml) | `0.7.3` |
-| rhwp-chrome / Edge | `0.2.1` (Chrome Web Store / Edge Add-ons 심사 통과) |
+| 라이브러리 (Cargo.toml) | `0.7.13` |
+| rhwp-chrome / Edge | `0.2.3` |
 | rhwp-safari | `0.2.1` |
-| rhwp-firefox | `0.1.1` (AMO 등록 준비 중) |
+| rhwp-firefox | `0.2.3` |
 
 #### 이원화 이유
 
@@ -129,6 +129,30 @@ v{MAJOR}.{MINOR}.{PATCH}
 - UI/동작 변경 없음 (dist 만 재빌드) → 버전 그대로 유지
 
 > 라이브러리 MINOR 업이 확장 버전 업을 강제하지는 않는다. 확장은 WASM을 새로 번들링해도 스토어 메타데이터 변경 필요 시에만 버전 업.
+
+#### 확장 배포 빌드
+
+Chrome Web Store와 Microsoft Edge Add-ons는 `rhwp-chrome` 빌드 산출물을 공유한다.
+Firefox AMO는 `rhwp-firefox` 빌드 산출물을 사용한다.
+
+```bash
+cd rhwp-chrome
+npm run build
+cd dist
+zip -r ../rhwp-chrome-{version}.zip .
+cp ../rhwp-chrome-{version}.zip ../rhwp-edge-{version}.zip
+
+cd ../rhwp-firefox
+npm run build
+cd dist
+zip -r ../rhwp-firefox-{version}.zip .
+
+cd ../..
+git archive --format=zip --prefix=rhwp-source/ --output=rhwp-firefox/rhwp-source-{version}.zip HEAD
+```
+
+Firefox AMO 제출 시에는 확장 패키지와 함께 검토용 source zip을 업로드한다.
+source zip은 `dist/`, `node_modules/`, `target/` 같은 빌드 산출물을 포함하지 않는 Git tree 기준으로 만든다.
 
 ### 버전 올리기 예시
 
