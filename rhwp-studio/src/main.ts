@@ -765,6 +765,14 @@ async function loadFromUrlParam(): Promise<void> {
     assertRemoteDocumentBytes(data, contentType);
     await loadBytes(data, fileName, null);
   } catch (error) {
+    // 로컬 file:// 로드 실패 + "파일 URL 액세스 허용" 미허용 → 전용 안내 (#1131)
+    if (fileUrl.startsWith('file:') && typeof chrome !== 'undefined') {
+      const allowed = await isFileSchemeAccessAllowed();
+      if (allowed === false) {
+        showFileUrlAccessGuidance();
+        return;
+      }
+    }
     showLoadError(error);
   }
 }
