@@ -409,8 +409,10 @@ impl SvgRenderer {
                 );
             }
             RenderNodeType::Image(img) => {
-                self.open_shape_transform(&img.transform, &node.bbox);
-                self.render_image_node(img, &node.bbox);
+                // [shot 05] 회전 90/270° 시 bbox extent swap — 이중회전 방지.
+                let eff_bbox = img.transform.effective_image_bbox(&node.bbox);
+                self.open_shape_transform(&img.transform, &eff_bbox);
+                self.render_image_node(img, &eff_bbox);
             }
             RenderNodeType::Path(path) => {
                 self.open_shape_transform(&path.transform, &node.bbox);

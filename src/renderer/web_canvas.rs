@@ -526,12 +526,14 @@ impl WebCanvasRenderer {
                 );
             }
             RenderNodeType::Image(img) => {
-                self.open_shape_transform(&img.transform, &node.bbox);
+                // [shot 05] 회전 90/270° 시 bbox extent swap — 이중회전 방지.
+                let eff_bbox = img.transform.effective_image_bbox(&node.bbox);
+                self.open_shape_transform(&img.transform, &eff_bbox);
                 // [Task #741 후속] 외부 file path 그림 (data 부재 + external_path 보유) →
                 // placeholder 영역 (회색 점선 사각형 + file path 텍스트). SVG renderer
                 // (svg.rs:1075~) 영역 정합. 본 분기 부재 시 image 표시 부재.
                 if img.data.is_none() && img.external_path.is_some() {
-                    let bbox = &node.bbox;
+                    let bbox = &eff_bbox;
                     self.ctx.set_fill_style_str("#f0f0f0");
                     self.ctx.fill_rect(bbox.x, bbox.y, bbox.width, bbox.height);
                     self.ctx.set_stroke_style_str("#999999");
@@ -589,7 +591,7 @@ impl WebCanvasRenderer {
                     }
                     self.draw_image_with_fill_mode(
                         render_data.as_ref(),
-                        &node.bbox,
+                        &eff_bbox,
                         img.fill_mode,
                         img.original_size,
                         img.crop,

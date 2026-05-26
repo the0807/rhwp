@@ -557,6 +557,27 @@ impl ShapeTransform {
     pub fn has_transform(&self) -> bool {
         self.rotation != 0.0 || self.horz_flip || self.vert_flip
     }
+
+    /// 그림 노드 한정: 회전각 90°/270° (±1° 톨러런스) 일 때 bbox extent 만 swap.
+    /// 그 외 각도(0/45/180 등)는 입력 bbox 그대로 반환.
+    ///
+    /// hwpx 의 `<hp:sz>` 는 회전 후 외접 사각형 치수라서 portrait → 90° 회전 시
+    /// bbox 가 landscape 로 들어온다. 그 위에 `rotate(90, cx, cy)` transform 을 다시
+    /// 적용하면 이중회전이 되어 페이지 밖으로 튀어 나간다. 회전 전 치수로 swap 한
+    /// bbox 위에 동일 rotation transform 을 적용하면 한컴 정답지와 정합한다.
+    /// cx, cy 는 swap 전후 동일하므로 rotate 식 자체는 그대로 둔다.
+    pub fn effective_image_bbox(&self, bbox: &BoundingBox) -> BoundingBox {
+        let r = self.rotation.rem_euclid(360.0);
+        let is_perpendicular = (r - 90.0).abs() < 1.0 || (r - 270.0).abs() < 1.0;
+        if !is_perpendicular {
+            return *bbox;
+        }
+        let cx = bbox.x + bbox.width / 2.0;
+        let cy = bbox.y + bbox.height / 2.0;
+        let new_w = bbox.height;
+        let new_h = bbox.width;
+        BoundingBox::new(cx - new_w / 2.0, cy - new_h / 2.0, new_w, new_h)
+    }
 }
 
 /// 직선 노드
