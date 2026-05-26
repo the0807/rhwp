@@ -770,6 +770,53 @@ async function loadFromUrlParam(): Promise<void> {
 }
 
 /**
+ * 확장 프로그램의 "파일 URL에 대한 액세스 허용" 권한 상태를 조회한다 (#1131).
+ *
+ * 확장 페이지에서만 의미가 있다. API 부재(비-확장 환경 등) 시 판정 불가로
+ * `null` 을 반환하여 호출부가 기존 동작(일반 에러)으로 폴백하도록 한다.
+ *
+ * @returns 허용=true, 미허용=false, 판정 불가=null
+ */
+async function isFileSchemeAccessAllowed(): Promise<boolean | null> {
+  const ext = (typeof chrome !== 'undefined' ? chrome.extension : undefined) as
+    | { isAllowedFileSchemeAccess?: () => Promise<boolean> }
+    | undefined;
+  if (!ext?.isAllowedFileSchemeAccess) return null;
+  try {
+    return await ext.isAllowedFileSchemeAccess();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 로컬 file:// 문서를 열 때 "파일 URL 액세스 허용" 권한이 꺼져 있어 로드가
+ * 실패한 경우, 일반 "Failed to fetch" 대신 원인과 해결 방법을 안내한다 (#1131).
+ *
+ * 설정 화면(chrome://extensions/?id=...)은 일반 링크로는 열리지 않으므로
+ * 확장 컨텍스트의 chrome.tabs.create 로 연다.
+ */
+function showFileUrlAccessGuidance(): void {
+  const errMsg = '로컬 파일을 열려면 확장 프로그램의 "파일 URL에 대한 액세스 허용"을 켜야 합니다.\n설정에서 권한을 허용한 뒤 파일을 다시 열어 주세요.';
+  const sb = sbMessage();
+  if (sb) sb.textContent = '파일 로드 실패: 파일 URL 액세스 권한이 필요합니다.';
+  console.error('[main] file:// 로드 실패 — 파일 URL 액세스 미허용 (#1131)');
+  showToast({
+    message: errMsg,
+    durationMs: 0, // 사용자가 읽고 직접 닫기
+    confirmLabel: '확인',
+    action: {
+      label: '설정 열기',
+      onClick: () => {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.create && chrome.runtime?.id) {
+          chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+        }
+      },
+    },
+  });
+}
+
+/**
  * 파일 로드 실패 시 사용자에게 에러를 명확히 알린다 (#265).
  *
  * 상태 표시줄은 22px 한 줄로 긴 에러 메시지가 ellipsis 로 잘리므로,
