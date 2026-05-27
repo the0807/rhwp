@@ -94,6 +94,61 @@ Foundation  Typeset   Collab    Complete
 - Attached Linux/macOS/Windows CLI binaries and SHA-256 checksums to GitHub Release `v0.7.13`
 - rhwp Chrome / Edge / Firefox extension v0.2.3 bundles rhwp core 0.7.13 WASM, adds local `file://` access guidance, and suppresses duplicate local-file downloads on Chrome/Edge
 
+#### v0.7.12 Cycle (2026-05-12 ~ 2026-05-18)
+
+> Patch cycle after v0.7.11 — 19 external contributor PRs plus the 7-PR @jangster77 series
+
+**Core Regression Fixes**
+- Split original Issue #952 into five focused defects and completed them: page-border basis, empty-caption phantom advance, column-relative picture advance, inline TAC line mapping before line breaks, and duplicate inline-equation emission inside textboxes
+- Fixed WMF `SetTextAlign` vertical-bit interpretation and HWP3 empty-paragraph + page-break overflow page-count inflation
+- Enabled release LTO / `codegen-units=1` / strip to reduce CLI and WASM artifact size
+
+**rhwp-studio and APIs**
+- Added F5 body block selection, F3 range extension, menu hotkey infrastructure, and page-number restart UI/API support
+- Added `searchAllText`, `rhwpDev.goto()`, and the first document compare/history workflow
+- Improved editing reliability around unsaved-change protection, external clipboard paste priority, and nested-table hit testing
+
+**HWP3/WMF/EMF/Layout**
+- Improved EMF/WMF image rendering, HWP3 tab-spec handling, and HWP3/HWPX external image references
+- Fixed multiple regressions around header/footer picture rotation and mirroring, master-page table margins, equation Canvas/WASM rendering, and final-column flow
+
+**Contributor Thanks**
+- Contributors in this cycle: [@jangster77](https://github.com/jangster77), [@oksure](https://github.com/oksure), [@planet6897](https://github.com/planet6897), [@seo-rii](https://github.com/seo-rii), [@postmelee](https://github.com/postmelee), [@johndoekim](https://github.com/johndoekim), [@ubermensch1218](https://github.com/ubermensch1218), [@xogh3198](https://github.com/xogh3198), [@dragonnite1221-lgtm](https://github.com/dragonnite1221-lgtm)
+
+#### v0.7.11 Cycle (2026-05-10 ~ 2026-05-11)
+
+> Patch cycle after v0.7.10 — focused on Skia native raster, HWP3 native rendering, and rhwp-studio editing interactions
+
+**Rendering and Layout**
+- Advanced Skia native raster work for Issue #536: Layer IR contract hardening, text replay parity, and Text IR v2 compatibility contract
+- Improved HWP3 native rendering through staged fixes against the 763-page `hwp3-sample10.hwp` oracle
+- Organized Git LFS `pdf-large/` isolation and large-fixture handling
+
+**rhwp-studio Editing UX**
+- Improved scrollbar dragging, Korean IME chord-key detection, and the `Ctrl+N → Ctrl+M` shortcut adjustment to avoid Chrome-reserved shortcuts
+- Fixed Alt/Option+Arrow word navigation, table-cell context preservation during drag selection, and line/document-end caret movement
+- Added table-edit Undo/Redo, table-resize `SnapshotCommand`, multi-column/new-number dialogs, and Ctrl/Cmd+Arrow / Ctrl+E shortcuts
+
+**Contributor Thanks**
+- Contributors in this cycle: [@planet6897](https://github.com/planet6897), [@oksure](https://github.com/oksure), [@jangster77](https://github.com/jangster77), [@seo-rii](https://github.com/seo-rii), [@postmelee](https://github.com/postmelee), [@johndoekim](https://github.com/johndoekim), [@kihyunnn](https://github.com/kihyunnn)
+
+#### v0.7.10 Cycle (2026-05-06)
+
+> Patch cycle after v0.7.9 — absorbed 7 external contributors, introduced the AI/VLM PNG pipeline, and added the CLI binary release pipeline
+
+**New Features and Infrastructure**
+- Added the GitHub Release pipeline for Linux/macOS/Windows CLI binaries with SHA-256 checksums
+- Added native Skia `PageLayerTree → PNG` export, the `native-skia` feature gate, and `DocumentCore::render_page_png_native(page)`
+- Added the `export-png` CLI, `--vlm-target claude`, `--scale`, `--max-dimension`, `--font-path`, plus Korean/English manuals
+
+**Layout and Rendering Fixes**
+- Fixed HWP3 Square wrap cases, HWP3 conversion-identification heuristics, and the HWP 5.0 spec 0x18/0x1E swap
+- Fixed cell inline TAC Shape margin + indent, TAC table `outer_margin_bottom`, inline table + equation paragraph shifts, choice-cell fraction paragraph routing, and cell-internal TopAndBottom image 1-line offsets
+- Fixed PUA SVG output, exam_eng arrow glyph mapping, Square wrap table `horz_rel_to=Column`, and missing inline equation rendering
+
+**Contributor Thanks**
+- Contributors in this cycle: [@planet6897](https://github.com/planet6897), [@oksure](https://github.com/oksure), [@jangster77](https://github.com/jangster77), [@seo-rii](https://github.com/seo-rii), [@postmelee](https://github.com/postmelee), [@johndoekim](https://github.com/johndoekim), [@cskwork](https://github.com/cskwork)
+
 #### v0.7.9 Cycle (2026-05-01)
 
 > Task #501 (Hancom defensive logic for cell.padding) + cherry-pick of PR #428/#494/#478/#498 + 4 external contributors
@@ -152,7 +207,7 @@ Foundation  Typeset   Collab    Complete
 - Content-script `init()` gate split to honor hoverPreview / autoOpen independently from showBadges (external contribution by [@postmelee](https://github.com/postmelee) — PR [#224](https://github.com/edwardkim/rhwp/pull/224))
 
 **Thanks to contributors**
-v0.7.x cycle cumulative external contributors: [@ahnbu](https://github.com/ahnbu), [@bapdodi](https://github.com/bapdodi), [@cskwork](https://github.com/cskwork), [@DanMeon](https://github.com/DanMeon), [@dreamworker0](https://github.com/dreamworker0), [@marsimon](https://github.com/marsimon), [@oksure](https://github.com/oksure), [@planet6897](https://github.com/planet6897), [@postmelee](https://github.com/postmelee), [@seanshin](https://github.com/seanshin), [@seo-rii](https://github.com/seo-rii), [@seunghan91](https://github.com/seunghan91), [@yl-star7](https://github.com/yl-star7)
+v0.7.x cycle cumulative external contributors: [@ahnbu](https://github.com/ahnbu), [@bapdodi](https://github.com/bapdodi), [@cskwork](https://github.com/cskwork), [@DanMeon](https://github.com/DanMeon), [@dragonnite1221-lgtm](https://github.com/dragonnite1221-lgtm), [@dreamworker0](https://github.com/dreamworker0), [@jangster77](https://github.com/jangster77), [@johndoekim](https://github.com/johndoekim), [@kihyunnn](https://github.com/kihyunnn), [@marsimon](https://github.com/marsimon), [@oksure](https://github.com/oksure), [@planet6897](https://github.com/planet6897), [@postmelee](https://github.com/postmelee), [@seanshin](https://github.com/seanshin), [@seo-rii](https://github.com/seo-rii), [@seunghan91](https://github.com/seunghan91), [@ubermensch1218](https://github.com/ubermensch1218), [@xogh3198](https://github.com/xogh3198), [@yl-star7](https://github.com/yl-star7)
 
 ### v1.0.0 — Typesetting Engine
 
